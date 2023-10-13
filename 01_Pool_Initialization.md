@@ -170,9 +170,56 @@ function shouldCallAfterInitialize(IHooks self) internal pure returns (bool) {
     return uint256(uint160(address(self))) & AFTER_INITIALIZE_FLAG != 0;
 }
 ```
+PoolManger while initialization calls Hooks library to check if the hooks are deployed at the proper addresses
 
+Hooks library checks the starting (or leading) bits of the hook contract's address. For instance, if a hook contract 
+is deployed at address 0x9000000000000000000000000000000000000000, its starting bits are '1001'. This means two 
+specific hooks ('before initialize' and 'after modify position') will be triggered.
 
+To generate valid hook addresses based on the code provided, we'll focus on the leading bits that indicate which hooks are invoked. Each flag corresponds to specific leading bits in the address, as indicated by the constants provided.
 
+Here are some example addresses based on the flags:
+
+1. **Just BEFORE_INITIALIZE_FLAG**
+   Address: `0x8000000000000000000000000000000000000000`
+   Leading bits: '1000...'
+   Hooks: 'before initialize'
+
+3. **Just BEFORE_MODIFY_POSITION_FLAG**
+   Address: `0x2000000000000000000000000000000000000000`
+   Leading bits: '0010...'
+   Hooks: 'before modify position'
+
+5. **BEFORE_INITIALIZE_FLAG and AFTER_INITIALIZE_FLAG**
+   Address: `0xC000000000000000000000000000000000000000`
+   Leading bits: '1100...'
+   Hooks: 'before initialize' and 'after initialize'
+
+6. **All Flags Activated**
+   Address: `0xFF00000000000000000000000000000000000000`
+   Leading bits: '11111111...'
+   Hooks: 'before initialize', 'after initialize', 'before modify position', 'after modify position', 'before swap', 'after swap', 'before donate', and 'after donate'.
+
+# CREATE2
+Ethereum blockchain allows you to create contracts (think of them as mini-programs). There are two ways to create these contracts:
+
+1. **CREATE**: This is the regular way. Every time you create a contract using this, it gets a new, unique address (like a house getting a unique postal address). You can't fully predict this address in advance.
+
+2. **CREATE2**: This is a special way. Here, you use some ingredients (your address, a `salt` which is a unique number you choose, and the contract's code called `bytecode`) to create the contract. The magic of `CREATE2` is that if you use the same ingredients, you'll get the same contract address every time.
+
+So, why use `CREATE2`? Because sometimes you want to know exactly where your contract will be, even before you create it. Like in your hooks system, where certain addresses trigger certain actions, using `CREATE2` helps ensure the contract is deployed to the exact right address.
+
+Here's a small code to show how `CREATE2` works:
+```solidity
+bytes32 salt = keccak256(abi.encodePacked(someData));
+address predictedAddress = address(uint(keccak256(abi.encodePacked(
+    byte(0xff),
+    deployerAddress,
+    salt,
+    keccak256(bytecode)
+))));
+```
+This code predicts the address where a contract will be deployed using `CREATE2` before actually deploying it.
 # References
 https://link.excalidraw.com/l/ABfjq3uKuGl/3vqFljWwYXG 
 

@@ -1,7 +1,9 @@
 
 
 # Architecture
-![image](https://github.com/RobinNagpal/uniswap-v4-draft-docs/assets/745748/2c9568c1-33c6-4655-a31f-a0488446d86a)
+Explain about the singleton
+
+<<Placeholder for Architecture Diagram>>
 
 # IPoolManager.sol
 https://github.com/Uniswap/v4-core/blob/main/contracts/interfaces/IPoolManager.sol 

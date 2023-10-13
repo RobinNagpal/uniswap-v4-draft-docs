@@ -3,7 +3,7 @@
 # Architecture
 Explain about the singleton
 
-<<Placeholder for Architecture Diagram>>
+`<<Placeholder for Architecture Diagram>>`
 
 # IPoolManager.sol
 https://github.com/Uniswap/v4-core/blob/main/contracts/interfaces/IPoolManager.sol 

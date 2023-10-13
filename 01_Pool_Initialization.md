@@ -200,6 +200,8 @@ Here are some example addresses based on the flags:
    Leading bits: '11111111...'
    Hooks: 'before initialize', 'after initialize', 'before modify position', 'after modify position', 'before swap', 'after swap', 'before donate', and 'after donate'.
 
+![Hooks Address](/images/01_Pool_Initialization/hooks_address.png)
+
 # CREATE2
 Ethereum blockchain allows you to create contracts (think of them as mini-programs). There are two ways to create these contracts:
 

@@ -174,3 +174,47 @@ Here's an example:
 
    Now, when calling `modifyPosition` or any other function that requires tick values, you'd use `tickLower` and `tickUpper` as arguments.
 
+# Add/Remove Liquidity
+
+```solidity
+ int24 tickLower = -600;
+    int24 tickUpper = 600;
+    uint256 liquidity = 1e18;
+    
+    lpm.modifyPosition(
+        address(this),
+        poolKey,
+        IPoolManager.ModifyPositionParams({
+            tickLower: tickLower,
+            tickUpper: tickUpper,
+            liquidityDelta: int256(liquidity)
+        }),
+        ZERO_BYTES
+    );
+
+    // recieved 1e18 LP tokens (6909)
+    Position memory position = Position({poolKey: poolKey, tickLower: tickLower, tickUpper: tickUpper});
+    assertEq(lpm.balanceOf(address(this), position.toTokenId()), liquidity);
+
+```
+
+
+```solidity
+ // assume liquidity has been provisioned
+    int24 tickLower = -600;
+    int24 tickUpper = 600;
+    uint256 liquidity = 1e18;
+
+    // remove all liquidity
+    lpm.modifyPosition(
+        address(this),
+        poolKey,
+        IPoolManager.ModifyPositionParams({
+            tickLower: tickLower,
+            tickUpper: tickUpper,
+            liquidityDelta: -int256(liquidity)
+        }),
+        ZERO_BYTES
+    );
+
+```

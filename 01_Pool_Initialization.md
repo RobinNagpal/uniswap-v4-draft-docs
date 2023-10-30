@@ -3,7 +3,10 @@
 # Architecture
 Explain about the singleton
 
-`<<Placeholder for Architecture Diagram>>`
+![High Level Architecture](/images/01_Pool_Initialization/HighLevelArchitecture.png) 
+
+
+![Detailed Architecture](/images/01_Pool_Initialization/DetailedArchitecture.png) 
 
 # IPoolManager.sol
 https://github.com/Uniswap/v4-core/blob/main/contracts/interfaces/IPoolManager.sol 

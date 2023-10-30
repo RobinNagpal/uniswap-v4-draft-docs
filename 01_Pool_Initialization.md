@@ -1,12 +1,19 @@
 
 
 # Architecture
-Explain about the singleton
+In Uniswap v3, each pool has its own contract instance, which makes making pools and doing swaps in multiple pools costly
 
 ![High Level Architecture](/images/01_Pool_Initialization/HighLevelArchitecture.png) 
 
+In v4, all pools are kept in a single contract instance, saving a lot of important gas because tokens don’t have to move between different pool contracts during swaps. Early calculations say that v4 will make the gas cost of creating pools 99% less. Hooks offer unlimited choices and the single contract lets you easily move through all these choices.
+
+
 
 ![Detailed Architecture](/images/01_Pool_Initialization/DetailedArchitecture.png) 
+
+This Singleton design is improved by a new "flash accounting" method. Instead of moving assets in and out of pools after each swap in v3, this method only moves the net balances. This means the system is a lot more efficient and saves even more gas in Uniswap v4.
+
+Because of the efficiency of the Singleton contract and flash accounting, there is no need to limit fee tiers. People who create pools can choose them to be most competitive or change them with a dynamic fee hook. v4 also supports native ETH again, which helps save more gas.
 
 # IPoolManager.sol
 https://github.com/Uniswap/v4-core/blob/main/contracts/interfaces/IPoolManager.sol 

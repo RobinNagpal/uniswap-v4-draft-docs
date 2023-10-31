@@ -82,7 +82,7 @@ assets in a particular state or position.
 the corresponding `tick`. This `tick` value represents a position or state where the assets have the given 
 price relationship.
 
-![sqrtPriceX96 to Tick](/images/02_Managing_Position/sqrtPriceX96_to_Tick.png)
+![sqrtPriceX96 to Tick](/images/02_Managing_Position/sqrtPriceX96_to_tick.png)
 
 
 ### 4. **Updating the sqrtPriceX96:**

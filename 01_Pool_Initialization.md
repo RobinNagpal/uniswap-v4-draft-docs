@@ -15,50 +15,30 @@ This Singleton design is improved by a new "flash accounting" method. Instead of
 
 Because of the efficiency of the Singleton contract and flash accounting, there is no need to limit fee tiers. People who create pools can choose them to be most competitive or change them with a dynamic fee hook. v4 also supports native ETH again, which helps save more gas.
 
-# IPoolManager.sol
+# PoolManager
+To understand the major parts of the PoolManager, let's look at the the main interface it implements: `IPoolManager.sol`.
+
 https://github.com/Uniswap/v4-core/blob/main/contracts/interfaces/IPoolManager.sol 
 
-```solidity
-/// @notice Emitted when a new pool is initialized
-/// @param id The abi encoded hash of the pool key struct for the new pool
-/// @param currency0 The first currency of the pool by address sort order
-/// @param currency1 The second currency of the pool by address sort order
-/// @param fee The fee collected upon every swap in the pool, denominated in hundredths of a bip
-/// @param tickSpacing The minimum number of ticks between initialized ticks
-/// @param hooks The hooks contract address for the pool, or address(0) if none
-event Initialize(
-    PoolId indexed id,
-    Currency indexed currency0,
-    Currency indexed currency1,
-    uint24 fee,
-    int24 tickSpacing,
-    IHooks hooks
-);
+Here’s a brief overview of the interface.
 
-    
-/// @notice Initialize the state for a given pool ID
-function initialize(PoolKey memory key, uint160 sqrtPriceX96, bytes calldata hookData)
-external
-returns (int24 tick);
-```
-Here are the main pieces of this code:
+- It inherits from `IFees` and `IERC1155`, combining fee management and token management functionalities.
+- It then defines errors to handle various exceptional conditions like max currencies touched, currency not settled, and improper function caller.
+- It then includes the `Initialize`, `ModifyPosition`, and `Swap` events which get emitted during respective operations, helping in tracking state changes.
+- It then has the `initialize` function which is used to initialize a new pool.
+- Various functions are declared to manage and query pool states like `getSlot0`, `getLiquidity`, and `getPosition`.
+- There are functions to manage liquidity positions in pools such as `modifyPosition` and `swap`, which facilitate liquidity provision and token swaps.
+- It includes mechanisms to manage pool locks and concurrency through functions like `lock`.
+- Functions like `mint`, `take`, and `settle` manage user balances, allowing users to interact with their funds within pools.
+- It allows external contracts to access pool state through the `extsload` function, facilitating integration with other contracts or interfaces.
+- Custom structs like `ModifyPositionParams` and `SwapParams` are declared to bundle parameters neatly, improving code readability and usability.
 
-1. **Event for Pool Initialization**:
-    - `event Initialize(...)`: This is like an announcement system. Whenever a new pool is set up, this "event" will send out details about it. The details it shares include the unique identity of the pool (`id`), the two types of digital currencies in the pool (`currency0` and `currency1`), the fee charged for swapping currencies in the pool (`fee`), the space between special points called "ticks" (`tickSpacing`), and any additional rules or actions (`hooks`) that might be attached to the pool.
+# Pool Initialization
+The `initialize` function sets up a new liquidity pool in Uniswap. It takes necessary information such as currencies 
+and pricing info, and hook information as inputs, checks various conditions to ensure that the pool is set up correctly, 
+and sets initial values for the pool. 
 
-2. **Error Messages**:
-    - `error TickSpacingTooLarge()`: This error message pops up if someone tries to set the space between "ticks" too large during the pool's setup.
-    - `error TickSpacingTooSmall()`: Similarly, this error pops up if the space between "ticks" is set too small.
-    - `error CurrenciesInitializedOutOfOrder()`: This message comes up if the digital currencies in the pool are not arranged in the right order.
-
-3. **Function to Initialize the Pool**:
-    - `function initialize(...)`: This is the main action to start or "initialize" a new pool. When someone wants to create a new pool, they call this function and provide some essential details. These details include a `key` that identifies the types of currencies in the pool and some initial settings like the starting price. The function then sets up the pool and returns the starting "tick."
-
-4. **Limits on Tick Spacing**:
-    - `function MAX_TICK_SPACING()`: This function tells you the maximum allowed space between "ticks" when setting up a pool.
-    - `function MIN_TICK_SPACING()`: Similarly, this function provides the smallest allowed space between "ticks."
-
-In essence, these pieces ensure that when a new pool is created, it's set up correctly, adhering to the rules, and everyone is informed about its details.
+After all the checks and setup, it announces that a new pool has been created by triggering an `Initialize` event.
 
 # PoolManager.sol
 https://github.com/Uniswap/v4-core/blob/main/contracts/PoolManager.sol
@@ -102,12 +82,6 @@ returns (int24 tick)
     emit Initialize(id, key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks);
 }
 ```
-Sure, let's explain this function in a straightforward manner.
-
----
-
-function `initialize` is used to set up a new pool with specific settings.
-
 Here's what initialize does step-by-step:
 
 1. **Check the Fee**:
@@ -135,6 +109,12 @@ Here's what initialize does step-by-step:
    - Finally, announce to everyone that a new pool has been created, sharing all its details.
 
 # PoolKey
+
+The `PoolKey` is a structure that uniquely identifies a liquidity pool by storing essential details like the two 
+currencies involved (sorted numerically), the swap fee, tick spacing, and hooks (extra functionalities) of the pool. 
+
+It acts as a unique identifier, ensuring that each pool can be precisely specified and accessed within the code.
+
 ```solidity
 /// @notice Returns the key for identifying a pool
 struct PoolKey {
@@ -150,95 +130,3 @@ struct PoolKey {
     IHooks hooks;
 }
 ```
-
-# Hook Deployment
-```solidity
-uint256 internal constant BEFORE_INITIALIZE_FLAG = 1 << 159;
-uint256 internal constant AFTER_INITIALIZE_FLAG = 1 << 158;
-
-
-/// @notice Utility function intended to be used in hook constructors to ensure
-/// the deployed hooks address causes the intended hooks to be called
-/// @param calls The hooks that are intended to be called
-/// @dev calls param is memory as the function will be called from constructors
-function validateHookAddress(IHooks self, Calls memory calls) internal pure {
-    if (
-        calls.beforeInitialize != shouldCallBeforeInitialize(self)
-            || calls.afterInitialize != shouldCallAfterInitialize(self)
-            || calls.beforeModifyPosition != shouldCallBeforeModifyPosition(self)
-            || calls.afterModifyPosition != shouldCallAfterModifyPosition(self)
-            || calls.beforeSwap != shouldCallBeforeSwap(self) || calls.afterSwap != shouldCallAfterSwap(self)
-            || calls.beforeDonate != shouldCallBeforeDonate(self) || calls.afterDonate != shouldCallAfterDonate(self)
-    ) {
-        revert HookAddressNotValid(address(self));
-    }
-}
-
-function shouldCallBeforeInitialize(IHooks self) internal pure returns (bool) {
-    return uint256(uint160(address(self))) & BEFORE_INITIALIZE_FLAG != 0;
-}
-
-function shouldCallAfterInitialize(IHooks self) internal pure returns (bool) {
-    return uint256(uint160(address(self))) & AFTER_INITIALIZE_FLAG != 0;
-}
-```
-PoolManger while initialization calls Hooks library to check if the hooks are deployed at the proper addresses
-
-Hooks library checks the starting (or leading) bits of the hook contract's address. For instance, if a hook contract 
-is deployed at address 0x9000000000000000000000000000000000000000, its starting bits are '1001'. This means two 
-specific hooks ('before initialize' and 'after modify position') will be triggered.
-
-To generate valid hook addresses based on the code provided, we'll focus on the leading bits that indicate which hooks are invoked. Each flag corresponds to specific leading bits in the address, as indicated by the constants provided.
-
-Here are some example addresses based on the flags:
-
-1. **Just BEFORE_INITIALIZE_FLAG**
-   Address: `0x8000000000000000000000000000000000000000`
-   Leading bits: '1000...'
-   Hooks: 'before initialize'
-
-3. **Just BEFORE_MODIFY_POSITION_FLAG**
-   Address: `0x2000000000000000000000000000000000000000`
-   Leading bits: '0010...'
-   Hooks: 'before modify position'
-
-5. **BEFORE_INITIALIZE_FLAG and AFTER_INITIALIZE_FLAG**
-   Address: `0xC000000000000000000000000000000000000000`
-   Leading bits: '1100...'
-   Hooks: 'before initialize' and 'after initialize'
-
-6. **All Flags Activated**
-   Address: `0xFF00000000000000000000000000000000000000`
-   Leading bits: '11111111...'
-   Hooks: 'before initialize', 'after initialize', 'before modify position', 'after modify position', 'before swap', 'after swap', 'before donate', and 'after donate'.
-
-![Hooks Address](/images/01_Pool_Initialization/hooks_address.png)
-
-# CREATE2
-Ethereum blockchain allows you to create contracts (think of them as mini-programs). There are two ways to create these contracts:
-
-1. **CREATE**: This is the regular way. Every time you create a contract using this, it gets a new, unique address (like a house getting a unique postal address). You can't fully predict this address in advance.
-
-2. **CREATE2**: This is a special way. Here, you use some ingredients (your address, a `salt` which is a unique number you choose, and the contract's code called `bytecode`) to create the contract. The magic of `CREATE2` is that if you use the same ingredients, you'll get the same contract address every time.
-
-So, why use `CREATE2`? Because sometimes you want to know exactly where your contract will be, even before you create it. Like in your hooks system, where certain addresses trigger certain actions, using `CREATE2` helps ensure the contract is deployed to the exact right address.
-
-Here's a small code to show how `CREATE2` works:
-```solidity
-bytes32 salt = keccak256(abi.encodePacked(someData));
-address predictedAddress = address(uint(keccak256(abi.encodePacked(
-    byte(0xff),
-    deployerAddress,
-    salt,
-    keccak256(bytecode)
-))));
-```
-This code predicts the address where a contract will be deployed using `CREATE2` before actually deploying it.
-# References
-https://link.excalidraw.com/l/ABfjq3uKuGl/3vqFljWwYXG 
-
-https://uniswaphooks.com/
-
-https://docs.uniswapfoundation.org/overview/conduit-testnet 
-
-GitHub - kadenzipfel/uni-lbp: A capital-efficient Uniswap v4 liquidity bootstrapping pool (LBP) hooks contract

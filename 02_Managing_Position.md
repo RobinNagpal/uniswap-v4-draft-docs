@@ -22,9 +22,9 @@ returns (BalanceDelta);
 Some of the important concepts to understand when working with Uniswap v3 or v4 positions are:
 
 1) Tick
-2) Liquidity Delta
-3) Tick Spacing
-4) SqrtRoot Price X96
+2) Tick Spacing
+4) SquareRoot Price X96
+5) Liquidity Delta
 
 ### Tick
 `tick` is a measure used in this code to handle prices of two different assets (tokens) in a unique way. A `tick` 
@@ -40,12 +40,55 @@ Each tick corresponds to a specific price, and not all prices are represented du
 
 ### Tick Spacing
 The tick spacing is a parameter that determines the separation between these usable ticks, making only every 
-\(N^{th}\) tick available for liquidity provision, where \(N\) is the tick spacing. This is a form of quantization of 
+Nth tick available for liquidity provision, where `N` is the tick spacing. This is a form of quantization of 
 the price levels that liquidity can be provided at.
 
 ![Price And Ticks](/images/02_Managing_Position/PriceAndTicks.png)
 
+### SquareRoot Price X96
+In Uniswap v3(and v4), the square root price (`sqrtPriceX96`) is a key concept and a crucial part of the mathematical 
+calculations. It's utilized for various calculations, including determining the amount of tokens that should be moved 
+during a swap and the liquidity calculations within specific price ranges.
 
+Here’s a breakdown of what `sqrtPriceX96` represents:
+
+### 1. **Square Root Price:**
+The price is represented as the square root of the actual price ratio of the tokens. This representation 
+simplifies the math, especially when it comes to calculating the amounts to be swapped, as well as the 
+liquidity calculations within tick ranges.
+
+### 2. **X96:**
+The X96 suffix refers to the fixed-point format used. Uniswap v3 utilizes a 96-bit fixed-point number format. 
+In this representation, there is a convention to maintain high precision in calculations. The fixed-point 
+representation means that the actual floating-point number is multiplied by \(2^{96}\) and stored as an 
+integer. When reading the value, it has to be interpreted properly by dividing it by \(2^{96}\) to get the 
+actual value.
+
+
+![SqrtPriceX96](/images/02_Managing_Position/SqrtPriceX96.png)
+
+### SqrtPriceX96 to Tick
+Since both the `tick` and `sqrtPriceX96` are representations of the price, they can be converted from one to the other.
+
+The Uniswap v3/v4 core library provides two functions to convert between the two representations:
+
+https://github.com/Uniswap/v4-core/blob/main/contracts/libraries/TickMath.sol
+
+1. The function `getSqrtRatioAtTick` takes a `tick` value as an input, and it computes the square root of the price 
+ratio of the two assets at that specific `tick`. The result represents the price relationship between two 
+assets in a particular state or position.
+
+2. The `getTickAtSqrtRatio` function does the reverse—it takes a square root of a price ratio and calculates 
+the corresponding `tick`. This `tick` value represents a position or state where the assets have the given 
+price relationship.
+
+![sqrtPriceX96 to Tick](/images/02_Managing_Position/sqrtPriceX96_to_Tick.png)
+
+
+### 4. **Updating the sqrtPriceX96:**
+- The `sqrtPriceX96` is not a constant; it changes as transactions occur within a pool, reflecting the current state and price ratio of the tokens within the pool.
+
+In conclusion, the `sqrtPriceX96` is a specific representation of the price in the Uniswap v3 protocol, designed to optimize and simplify the mathematical calculations involved in swaps and liquidity management within the protocol. It is a dynamic value that reflects the current pricing state of the pool.
 
 # Liquidity Delta
 

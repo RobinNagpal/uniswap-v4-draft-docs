@@ -1,65 +1,50 @@
 
 
 # Position
-To add or remove the tokens we call the function `modifyPosition` which is defined in `Pool.sol` file
-
+To add or remove the tokens we call the function `modifyPosition` which is defined in `PoolManager.sol` file
 
 ```solidity
 struct ModifyPositionParams {
-    // the address that owns the position
-    address owner;
-    // the lower and upper tick of the position
-    int24 tickLower;
-    int24 tickUpper;
-    // any change in liquidity
-    int128 liquidityDelta;
-    // the spacing between ticks
-    int24 tickSpacing;
+   // the lower and upper tick of the position
+   int24 tickLower;
+   int24 tickUpper;
+   // how to modify the liquidity
+   int256 liquidityDelta;
 }
 
-
-/// @dev Effect changes to a position in a pool
-/// @param params the position details and the change to the position's liquidity to effect
-/// @return result the deltas of the token balances of the pool
-function modifyPosition(State storage self, ModifyPositionParams memory params)
-internal
-returns (BalanceDelta result, FeeAmounts memory fees)
-{
-    // Implementation
-}
+/// @notice Modify the position for the given pool
+function modifyPosition(PoolKey memory key, ModifyPositionParams memory params, bytes calldata hookData)
+external
+returns (BalanceDelta);
 ```
 
-# Tick
+# Important Concepts
+Some of the important concepts to understand when working with Uniswap v3 or v4 positions are:
 
-Ticks basically represent token  prices of a pair .
+1) Tick
+2) Liquidity Delta
+3) Tick Spacing
+4) SqrtRoot Price X96
 
-Means - smallest amount  possible by which the price can go up or down
+### Tick
+`tick` is a measure used in this code to handle prices of two different assets (tokens) in a unique way. A `tick` 
+represents a specific price ratio between these two assets, calculated using a mathematical formula.
 
-price (i) = 1.001 ^ i  ; *( where i is our tick )*
+There are minimum and maximum `tick` values defined within the code, ensuring that calculated prices are within a 
+reasonable or acceptable range.
 
-Let’s say we have Token A and Token B
+In Uniswap v3(and v4), liquidity providers can provide liquidity at specific price ranges (ticks), allowing them to 
+concentrate their liquidity and potentially earn more fees.
 
-pools has initial tick equals to zero
+Each tick corresponds to a specific price, and not all prices are represented due to the discrete nature of the ticks.
 
-Token A and B are equal initially so the initial price of the Token A is
+### Tick Spacing
+The tick spacing is a parameter that determines the separation between these usable ticks, making only every 
+\(N^{th}\) tick available for liquidity provision, where \(N\) is the tick spacing. This is a form of quantization of 
+the price levels that liquidity can be provided at.
 
-price(i=0) = 1.001^0 = 1 ;
+![Price And Ticks](/images/02_Managing_Position/PriceAndTicks.png)
 
-some purchase happen where they sell some token B and buy some token A which cause the price of Token A to go up and B to go down
-
-then suppose tick will reduce i = -50 ;
-
-price(i = -50) = 1.001 ^(-50)= 0.995012
-
-1 token A = 0.995012 of Token B
-
-Ticks are intergers but they’re use to find the value of assets which are fractional values as solidity cannot store float values they use ticks for these things
-
-Now Again suppose there is a token A that can only move in increment or decrement of  1 dollar , only possible values for ticks then become 1 ,2, 3, ,4 and so on .
-
-but if some sell and buy happens in that particular stock it doesn’t means that the tick will get adjusted to some 1 ,2,3, kind of values it can be 0.6 or 0.7 but ticks are spaced to at intervals of 1 hence
-
-We round the actual tick to either `tickLower` or `tickHigher`  , here 0 and 1 respectively
 
 
 # Liquidity Delta

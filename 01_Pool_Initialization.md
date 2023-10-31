@@ -130,3 +130,8 @@ struct PoolKey {
     IHooks hooks;
 }
 ```
+
+Since we create and pass the `PoolKey` to the `initialize` function, and as part of the PoolKey we pass the `hooks` we
+want to use for the pool. 
+
+We can use the `hooks` to customize the pool to our liking.

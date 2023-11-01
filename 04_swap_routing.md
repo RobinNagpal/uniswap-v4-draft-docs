@@ -1,35 +1,79 @@
-## Routers
-#### Swap Router
-* https://github.com/Uniswap/v3-periphery/blob/main/contracts/SwapRouter.sol
-#### Universal Router
-* https://github.com/Uniswap/universal-router
-#### Auto Router
-* https://github.com/Uniswap/smart-order-router#readme
-* https://blog.uniswap.org/auto-router-v2
+# Swap Tokens
+As explained in the fees section, the swap happens in a loop until the specified amount has been completely 
+used or the price limit has been reached. In each iteration, the code calculates how much of the tokens can 
+be swapped at the current price level.
 
-## Issue on Documentation
-https://github.com/Uniswap/v4-periphery/issues/38
+The swap keeps iterating until either the specified amount is fully used or the square root of
+the price hits the defined limit (`sqrtPriceLimitX96`).
 
-#### Component
-Pool Interaction, Swaps, Pool Interaction, Settle/Take/Mint
+Here is the important structs and `swap` function from IPoolManager which is used to swap tokens:
 
-##### Describe the suggested feature and problem it solves.
-Develop a swap router. With the introduction of things like Universal Router and multi-version routers (i.e. SwapRouter02)
-Could be nice to include extensible abstract contracts (or libraries?) in this repo to be used in external contracts. But at least have a sound router example code in here.
+```solidity
+/// @notice Emitted for swaps between currency0 and currency1
+/// @param id The abi encoded hash of the pool key struct for the pool that was modified
+/// @param sender The address that initiated the swap call, and that received the callback
+/// @param amount0 The delta of the currency0 balance of the pool
+/// @param amount1 The delta of the currency1 balance of the pool
+/// @param sqrtPriceX96 The sqrt(price) of the pool after the swap, as a Q64.96
+/// @param liquidity The liquidity of the pool after the swap
+/// @param tick The log base 1.0001 of the price of the pool after the swap
+event Swap(
+    PoolId indexed id,
+    address indexed sender,
+    int128 amount0,
+    int128 amount1,
+    uint160 sqrtPriceX96,
+    uint128 liquidity,
+    int24 tick,
+    uint24 fee
+);
+
+struct SwapParams {
+    bool zeroForOne;
+    int256 amountSpecified;
+    uint160 sqrtPriceLimitX96;
+}
+
+/// @notice Swap against the given pool
+function swap(PoolKey memory key, SwapParams memory params, bytes calldata hookData)
+    external
+    returns (BalanceDelta);
+```
+
+# Example
+Here is an example of how to swap tokens by calling the `swap` function:
+```solidity
+PoolKey memory key = PoolKey({
+    currency0: Currency.wrap(address(0)),
+    currency1: currency1,
+    fee: 3000,
+    hooks: IHooks(address(0)),
+    tickSpacing: 60
+});
+
+IPoolManager.SwapParams memory params =
+    IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 100, sqrtPriceLimitX96: SQRT_RATIO_1_2});
 
 
+manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
+manager.swap(key, params, ZERO_BYTES);
+```
 
-## universal-router
-https://blog.uniswap.org/permit2-and-universal-router
+# Acquiring Lock
+Full detail about the locking mechanism is explained in the [Locking Mechanism](/03_Locking_Mechanism/README.md) section.
 
-https://github.com/Uniswap/universal-router
+The contract that calls the `swap` must implement ILockCallback interface.
 
-#### Swap Tokens with Universal Router (as a DeFi Developer) | Uniswap V3
-https://www.youtube.com/watch?v=LfJImqRQUkI
+PoolSwapTest.sol has some examples of how to acquire lock and some basic checks in place.
+https://github.com/Uniswap/v4-core/blob/main/contracts/test/PoolSwapTest.sol
 
-#### Multihop Swaps with Uniswap V3 & JavaScript | Uniswap V3 Swap Router & EthersJS | DeFi
-https://www.youtube.com/watch?v=_Y6kNQ9On_Q
+In `PoolSwapTest` the `lockAcquired` function is triggered when a certain "lock" is acquired in the 
+context of swapping assets or tokens. Once this lock is confirmed, the function handles 
+the settlement based on the result of the swap. It decodes the data provided to understand the context, asks 
+the manager to perform the swap, and then either 
+transfers, withdraws, or mints tokens based on the balance changes resulting from the swap.
 
-#### Uniswap V3 Multicall with SwapRouter | Multiple Swaps in 1 Transaction | Multicall, V3, SwapRouter
-https://www.youtube.com/watch?v=xKiLdpshg6w
+To ensure secure operations, the function checks that it's only being called by the intended `manager` contract. 
+Depending on the type of swap and settings, it handles the balance adjustments for two types of currencies: 
+`currency0` and `currency1`. After settling all balances, it returns the balance changes to the caller.

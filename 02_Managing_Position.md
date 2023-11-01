@@ -124,3 +124,18 @@ Here is the code that adds liquidity to a position:
      ZERO_BYTES
  );
 ```
+
+# Acquiring Lock
+Full detail about the locking mechanism is explained in the [Locking Mechanism](/03_Locking_Mechanism/README.md) section.
+
+The contract that calls the `modifyPosition` must implement ILockCallback interface.
+
+PoolModifyPositionTest.sol has some examples of how to acquire lock and some basic checks in place.
+https://github.com/Uniswap/v4-core/blob/main/contracts/test/PoolModifyPositionTest.sol 
+
+In `PoolModifyPositionTest` the `lockAcquired` function is executed when the lock is acquired, handling 
+balance adjustments and interactions with external currencies and contracts. The function takes raw 
+encoded data as input, which is then decoded into structured data, specifically CallbackData. Essential 
+validations and checks are performed, ensuring the caller of the function is the manager, and it 
+processes the modifications such as settling amounts and making necessary transfers based on 
+conditions like whether the amount being positive or negative.

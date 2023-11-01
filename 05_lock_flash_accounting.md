@@ -1,4 +1,10 @@
-Pool actions can be taken by acquiring a lock on the contract and implementing the `lockAcquired` callback to then proceed with any of the following actions on the pools:
+# Intro to Locking
+The locking mechanism in v4 ensures that certain operations are executed atomically without interference, ensuring 
+consistency and correctness in the PoolManager's state. PoolManager, uses `LockDataLibrary` to manager a queue of 
+lockers, allowing nested locks, and ensures that all currency deltas are settled before releasing a lock.
+
+Pool actions can be taken by acquiring a lock on the contract and implementing the `lockAcquired` callback to 
+then proceed with any of the following actions on the pools:
 
 - `swap`
 - `modifyPosition`
@@ -7,19 +13,29 @@ Pool actions can be taken by acquiring a lock on the contract and implementing t
 - `settle`
 - `mint`
 
-Only the net balances owed to the pool (negative) or to the user (positive) are tracked throughout the duration of a lock. This is the `delta` field held in the lock state. Any number of actions can be run on the pools, as long as the deltas accumulated during the lock reach 0 by the lock’s release. This lock and call style architecture gives callers maximum flexibility in integrating with the core code.
+# Simple Locking Analogy
+
+Imagine a public library where people can come in and borrow books. Now, let's say a librarian wants to update the
+records for a specific book (e.g., mark it as borrowed). To do so without interruptions, the librarian puts up a
+sign that says, "Please wait, updating records." This sign prevents other librarians or staff from making changes
+to the same record at the same time. Once the updating is done, the sign is removed, and others can now access and
+modify the record.
+
+In this analogy:
+- The book record is like the state of the PoolManager.
+- The sign the librarian puts up is equivalent to acquiring a lock.
+- Other staff waiting or not being able to update the record represents the protection given by the lock.
 
 
+# Main Components
 In `PoolManager` "locking" is essentially a way to ensure certain operations are coordinated and don't interfere with each other
+Here are the main components of the locking mechanism:
 
-1. **LockData Structure and Storage**:
-    ```solidity
-    IPoolManager.LockData public override lockData;
-    mapping(address locker => mapping(Currency currency => int256 currencyDelta)) public currencyDelta;
-    ```
-   `lockData` is an instance of a structure `LockData` which presumably is defined in `LockDataLibrary`. This structure holds the state of current locks. The `currencyDelta` mapping keeps track of amounts due/owed by each locker for every currency.
+### 1. **Locking and Unlocking:**
 
-2. **The `lock` function**:
+- The `lock` function is where the locking mechanism is initiated. It pushes the `msg.sender` (the caller of the 
+  function) to the `lockData` which acts as a queue.
+
     ```solidity
     function lock(bytes calldata data) external override returns (bytes memory result) {
         lockData.push(msg.sender);
@@ -34,15 +50,34 @@ In `PoolManager` "locking" is essentially a way to ensure certain operations are
         }
     }
     ```
-   This function does several things:
-    - First, it pushes the `msg.sender` (the caller of this function) into the `lockData`.
-    - Then it invokes the `lockAcquired` callback on the caller. This presumably allows the locker to execute certain logic while holding the lock.
-    - After the callback, if this is the only active lock, it checks if everything was settled (`nonzeroDeltaCount == 0`), and if so, clears the `lockData`. If there are more locks, it simply pops the last locker.
 
-3. **Accounting for Changes**:
-   There are functions like `_accountDelta` and `_accountPoolBalanceDelta` which adjust the currency deltas for lockers. These deltas represent the amounts that are owed or due because of actions taken while holding the lock.
+- During the lock, a callback function `ILockCallback(msg.sender).lockAcquired(data)` is called, where the locked 
+  contract can perform necessary operations.
 
-4. **OnlyByLocker modifier**:
+- After the operations in the callback are completed, it either deletes the `lockData` if it is the only element, 
+  signifying the release of the lock, or it pops the last element from `lockData`, signifying that the lock is 
+  released by that particular address.
+
+### 2. **Queue Management:**
+
+- The queue management is handled by the `LockDataLibrary`. This library provides functionality to push, pop, and 
+  get active locks from the `lockData`.
+
+- The queue is managed in a way that it allows you to keep a track of locker addresses and ensure that only the 
+  active locker can perform certain operations.
+
+### 3. **Non-Zero Deltas Tracking:**
+
+- `nonzeroDeltaCount` is a variable in `LockData` structure that keeps track of non-zero deltas across all lockers. A 
+   delta here appears to represent a kind of balance or a state that changes during operations.
+
+- In the `_accountDelta` function, if a delta changes from or to zero, the `nonzeroDeltaCount` is updated accordingly. 
+  This is crucial for tracking the net changes made by each locker and ensuring that everything nets to zero at the end of operations.
+
+### 4. **Restricted Access:**
+
+- The modifier `onlyByLocker` is used to restrict access to certain functions. It ensures that a function can only be 
+  called by the address that currently holds the lock.
     ```solidity
     modifier onlyByLocker() {
         address locker = lockData.getActiveLock();
@@ -50,62 +85,38 @@ In `PoolManager` "locking" is essentially a way to ensure certain operations are
         _;
     }
     ```
-   This is a function modifier that ensures a function can only be called by the current active locker (the one that has acquired the lock).
+- Several functions in the contract, such as `modifyPosition`, `swap`, `donate`, `take`, `mint`, and `settle`, use 
+  the `onlyByLocker` modifier. This ensures that only the entity that has currently locked the contract can modify 
+  positions, swap tokens, etc. This helps ensure operations are atomic and avoid potential race conditions.
 
-5. **Usage of `onlyByLocker`**:
-   Several functions in the contract, such as `modifyPosition`, `swap`, `donate`, `take`, `mint`, and `settle`, use the `onlyByLocker` modifier. This ensures that only the entity that has currently locked the contract can modify positions, swap tokens, etc. This helps ensure operations are atomic and avoid potential race conditions.
+# Locking Diagram
 
-In summary, the locking mechanism in this contract ensures that certain operations are done atomically by an entity that has acquired a lock. The entity must then make sure to settle any dues or payments before releasing the lock. This mechanism provides a way to coordinate actions and prevent potential issues arising from multiple entities trying to perform conflicting operations simultaneously.
+![Locking Diagram](images/05_locking_mechanism/locking_mechanism.png)
 
+* A locker (caller) initiates a lock function execution in the PoolManager contract.
+* The locker gets added to the lock queue by the LockDataLibrary.
+* An ILockCallback is used where the locker acquires the lock.
+* Balances and currency deltas are managed and updated within the Balance and CurrencyDelta.
+* The locker can account for pool balance deltas which handle the currency and its corresponding deltas.
 
-## Another
+### Working
+The locking mechanism in the PoolManager contract works as follows:
 
-The locking mechanism in this code allows external contracts to temporarily take exclusive control over the PoolManager to make atomic operations involving multiple state changes.
+1. When a user wants to lock, they call the `lock()` function with the data that they want to be passed to the callback.
+2. The `lock()` function pushes the user's address onto the locker queue.
+3. The `lock()` function then calls the `ILockCallback(msg.sender).lockAcquired(data)` callback.
+4. The callback can do whatever it needs to do, such as updating the user's balances or interacting with other contracts.
+5. Once the callback is finished, it returns to the `lock()` function.
+6. The `lock()` function checks if there are any other lockers in the queue. If there are, it pops the next locker off the queue and calls the callback for that locker.
+7. If there are no more lockers in the queue, the `lock()` function returns.
 
-The key things to note:
+# Lock Data Structure
 
-1) The LockData struct tracks a queue of lockers (current callers with the lock) as well as a count of non-zero currency balances owed.
-2) The lock() method acquires the lock by pushing the caller onto the queue. The caller must fully settle their balances before releasing the lock.
-3) The onlyByLocker modifier checks that msg.sender is the last address in the queue.
-4) Critical state-changing methods like swap(), donate(), take() etc. are guarded by the onlyByLocker modifier.
-5) When the caller is done with their atomic operations, they call lock() again, which pops them off the queue and deletes the lock data if they were the last locker.
-6) The lock() method returns a callback payload that the locker can use to integrate the locking mechanism into their own contract logic.
-7) Lockers must carefully manage balances owed using the _accountDelta() method during their locked operations.
-8) When the last lock is released, all currency balances must net to zero, otherwise it fails.
+- **Struct:**
+  The `LockData` struct is used to store information related to locks. It has two fields:
+   - `length`: Represents the current number of active locks.
+   - `nonzeroDeltaCount`: Represents the total number of non-zero deltas over all active and completed locks.
 
+- **Library (`LockDataLibrary`):**
+  The `LockDataLibrary` is a library used for managing the custom storage implementation of the queue that tracks current lockers.
 
-## Another
-
-Here is a more detailed explanation of the locking mechanism:
-
-- The LockData struct contains two fields:
-   - length - tracks the number of lockers currently in the queue
-   - nonzeroDeltaCount - tracks the number of non-zero currency balances owed across all lockers
-
-- The lockData variable in PoolManager is the sentinel storage slot for the queue. It gets passed around to the LockDataLibrary functions.
-
-- When an external contract calls lock(), it pushes the caller's address onto the end of the queue. This acquires the lock.
-
-- The LockDataLibrary uses a mapped storage pattern - locker addresses are stored starting from a constant OFFSET slot.
-
-- Length tracks the index of the slot for the currently last locker.
-
-- Lockers call PoolManager methods guarded by the onlyByLocker modifier while the lock is held.
-
-- onlyByLocker checks that msg.sender matches the last address in the queue.
-
-- Whenever a locker adjusts balances via _accountDelta(), the nonzeroDeltaCount is updated.
-
-- When finished, the locker calls lock() again, which pops them off the queue and clears lockData if they were the last one.
-
-- Before releasing the last lock, nonzeroDeltaCount must be zero, meaning all balances net to zero.
-
-- While locked, the locker has exclusive write access to make multiple state changes across deposit, withdraw, swap etc.
-
-- The lock() method lets them integrate the locking mechanism into their own contract logic by returning a callback payload.
-
-- This technique allows trusted contracts to atomically batch operations in a gas-efficient manner.
-
-- The contract effectively locks itself until the caller is done, preventing reentrancy issues.
-
-So in summary, this queue-based locking mechanism facilitates atomic cross-method operations for trusted external contracts.

@@ -1,0 +1,51 @@
+@startuml
+participant "Locker(Caller)" as Locker
+participant "PoolManager Contract" as PoolManager
+participant "LockDataLibrary" as LockDataLib
+participant "ILockCallback" as ILockCallback
+participant "Balance and CurrencyDelta" as Balance
+
+== Lock Function Execution ==
+Locker -> PoolManager : lock(data)
+activate PoolManager
+PoolManager -> LockDataLib : push(msg.sender)
+activate LockDataLib
+LockDataLib --> PoolManager : Locker added to queue
+deactivate LockDataLib
+
+PoolManager -> ILockCallback : lockAcquired(data)
+activate ILockCallback
+ILockCallback --> PoolManager : Return result (bytes memory)
+deactivate ILockCallback
+
+PoolManager -> Balance : _accountDelta(currency, delta)
+activate Balance
+Balance --> PoolManager : Accounted delta for currency
+deactivate Balance
+
+PoolManager -> LockDataLib : pop()
+activate LockDataLib
+LockDataLib --> PoolManager : Locker removed from queue
+deactivate LockDataLib
+
+PoolManager --> Locker : return result
+
+== Balances Settlement ==
+Locker -> PoolManager : _accountPoolBalanceDelta(key, delta)
+activate PoolManager
+
+PoolManager -> Balance : _accountDelta(currency0, delta.amount0())
+activate Balance
+Balance --> PoolManager : Accounted delta for currency0
+deactivate Balance
+
+PoolManager -> Balance : _accountDelta(currency1, delta.amount1())
+activate Balance
+Balance --> PoolManager : Accounted delta for currency1
+deactivate Balance
+
+PoolManager --> Locker : Balances updated
+deactivate PoolManager
+@enduml
+
+

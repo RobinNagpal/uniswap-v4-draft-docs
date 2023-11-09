@@ -120,3 +120,82 @@ The locking mechanism in the PoolManager contract works as follows:
 - **Library (`LockDataLibrary`):**
   The `LockDataLibrary` is a library used for managing the custom storage implementation of the queue that tracks current lockers.
 
+
+# Example
+Below is the example from a community ["Liquidity Bootstrapping Hook"](https://github.com/kadenzipfel/uni-lbp/blob/main/src/LiquidityBootstrappingHooks.sol) that checks the deltas and settles them before releasing the lock.
+
+```solidity
+
+/// @notice Helper function to take tokens according to balance deltas
+/// @param delta Balance delta
+/// @param takeToOwner Whether to take the tokens to the owner
+function _takeDeltas(PoolKey memory key, BalanceDelta delta, bool takeToOwner) internal {
+    PoolId poolId = key.toId();
+    int256 delta0 = delta.amount0();
+    int256 delta1 = delta.amount1();
+
+    if (delta0 < 0) {
+        poolManager.take(key.currency0, takeToOwner ? owner[poolId] : address(this), uint256(-delta0));
+    }
+
+    if (delta1 < 0) {
+        poolManager.take(key.currency1, takeToOwner ? owner[poolId] : address(this), uint256(-delta1));
+    }
+}
+
+/// @notice Helper function to settle tokens according to balance deltas
+/// @param key Pool key
+/// @param delta Balance delta
+function _settleDeltas(PoolKey memory key, BalanceDelta delta) internal {
+    int256 delta0 = delta.amount0();
+    int256 delta1 = delta.amount1();
+
+    if (delta0 > 0) {
+        key.currency0.transfer(address(poolManager), uint256(delta0));
+        poolManager.settle(key.currency0);
+    }
+
+    if (delta1 > 0) {
+        key.currency1.transfer(address(poolManager), uint256(delta1));
+        poolManager.settle(key.currency1);
+    }
+}
+
+/// @notice Callback function called by the poolManager when a lock is acquired
+///         Used for modifying positions and swapping tokens internally
+/// @param data Data passed to the lock function
+/// @return Balance delta
+function lockAcquired(bytes calldata data) external override poolManagerOnly returns (bytes memory) {
+    bytes4 selector = abi.decode(data[:32], (bytes4));
+
+    if (selector == IPoolManager.modifyPosition.selector) {
+        ModifyPositionCallback memory callback = abi.decode(data[32:], (ModifyPositionCallback));
+
+        BalanceDelta delta = poolManager.modifyPosition(callback.key, callback.params, bytes(""));
+
+        if (callback.params.liquidityDelta < 0) {
+            // Removing liquidity, take tokens from the poolManager
+            _takeDeltas(callback.key, delta, callback.takeToOwner); // Take to owner if specified (exit)
+        } else {
+            // Adding liquidity, settle tokens to the poolManager
+            _settleDeltas(callback.key, delta);
+        }
+
+        return abi.encode(delta);
+    }
+
+    if (selector == IPoolManager.swap.selector) {
+        SwapCallback memory callback = abi.decode(data[32:], (SwapCallback));
+
+        BalanceDelta delta = poolManager.swap(callback.key, callback.params, bytes(""));
+
+        // Take and settle deltas
+        _takeDeltas(callback.key, delta, true); // Take tokens to the owner
+        _settleDeltas(callback.key, delta);
+
+        return abi.encode(delta);
+    }
+
+    return bytes("");
+}
+```

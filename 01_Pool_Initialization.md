@@ -135,3 +135,37 @@ Since we create and pass the `PoolKey` to the `initialize` function, and as part
 want to use for the pool. 
 
 We can use the `hooks` to customize the pool to our liking.
+
+# Initialization Code
+
+```solidity
+
+contract TestCounter {
+   Currency internal currency1;
+   Currency internal currency0;
+   uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
+   TestERC20 token0;
+   TestERC20 token1;
+   PoolManager manager;
+   PoolKey key;
+   PoolId id;
+
+   bytes constant ZERO_BYTES = new bytes(0);
+
+   function setup(){
+
+      MockERC20 tokenA = new MockERC20("TestA", "A", 18, 1000 ether);
+      MockERC20 tokenB = new MockERC20("TestB", "B", 18, 1000 ether);
+
+      (currency0, currency1) = SortTokens.sort(tokenA, tokenB);
+
+      manager = new PoolManager(500000);
+
+
+      key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
+      id = key.toId();
+      manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+
+   }
+}
+```

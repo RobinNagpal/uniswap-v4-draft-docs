@@ -91,7 +91,7 @@ Here are the main components of the locking mechanism:
 
 # Locking Diagram
 
-![Locking Diagram](images/05_locking_mechanism/locking_mechanism.png)
+![Locking Diagram](images/05_locking_mechanism/LockingMechanism_excali.png)
 
 * A locker (caller) initiates a lock function execution in the PoolManager contract.
 * The locker gets added to the lock queue by the LockDataLibrary.

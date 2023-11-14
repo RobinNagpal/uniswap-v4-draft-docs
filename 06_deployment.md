@@ -1,6 +1,9 @@
 # Hook Deployment
+PoolManger while initialization calls Hooks library to check if the hooks are deployed at the proper addresses
 
-
+Hooks library checks the starting (or leading) bits of the hook contract's address. For instance, if a hook contract
+is deployed at address 0x9000000000000000000000000000000000000000, its starting bits are '1001'. This means two
+specific hooks ('before initialize' and 'after modify position') will be triggered.
 
 ```solidity
 uint256 internal constant BEFORE_INITIALIZE_FLAG = 1 << 159;
@@ -32,13 +35,10 @@ function shouldCallAfterInitialize(IHooks self) internal pure returns (bool) {
     return uint256(uint160(address(self))) & AFTER_INITIALIZE_FLAG != 0;
 }
 ```
-PoolManger while initialization calls Hooks library to check if the hooks are deployed at the proper addresses
 
-Hooks library checks the starting (or leading) bits of the hook contract's address. For instance, if a hook contract
-is deployed at address 0x9000000000000000000000000000000000000000, its starting bits are '1001'. This means two
-specific hooks ('before initialize' and 'after modify position') will be triggered.
-
-To generate valid hook addresses based on the code provided, we'll focus on the leading bits that indicate which hooks are invoked. Each flag corresponds to specific leading bits in the address, as indicated by the constants provided.
+To generate valid hook addresses based on the code provided, we focus on the leading bits that indicate 
+which hooks are invoked. Each flag corresponds to specific leading bits in the address, as indicated by 
+the constants provided.
 
 Here are some example addresses based on the flags:
 
@@ -84,21 +84,52 @@ address predictedAddress = address(uint(keccak256(abi.encodePacked(
 ))));
 ```
 This code predicts the address where a contract will be deployed using `CREATE2` before actually deploying it.
-# References
-https://link.excalidraw.com/l/ABfjq3uKuGl/3vqFljWwYXG
 
-https://uniswaphooks.com/
+# Deterministic Deployment Proxy
+Many developers use https://github.com/Arachnid/deterministic-deployment-proxy to deploy contracts to a specific 
+address. The main feature of this project is the use of the Ethereum CREATE2 opcode, which allows for deterministic 
+deployment of contracts. This means that using a specific set of inputs (bytecode hash and salt), the deployed 
+contract will always end up at the same address across different networks. 
 
-https://docs.uniswapfoundation.org/overview/conduit-testnet
+Deterministic deployment proxy uses two key techniques:
+1) The proxy contract is deployed using a one-time private key, so it will always have the same address no matter when 
+or where it is deployed. 
+2) The proxy contract uses the CREATE2 opcode to deploy the target contract. CREATE2 calculates the address of the 
+deployed contract based on the init code and a salt parameter. By using the same init code (bytecode) and salt each 
+time, the target contract will be deployed to the same address across networks.
 
-GitHub - kadenzipfel/uni-lbp: A capital-efficient Uniswap v4 liquidity bootstrapping pool (LBP) hooks contract
+Most of the chains do have the deployment proxy at `0x4e59b44847b379578588920cA78FbF26c0B4956C`. See [here](https://github.com/Uniswap/v4-periphery/issues/59#issuecomment-1716379675)
+for more details.
+
+# Hook Deployment Code
+The https://github.com/uniswapfoundation/v4-template repository contains some helper utilities for deploying hooks.
+
+Here is the code for deploying the hooks using Deterministic Deployment Proxy which is deployed at `0x4e59b44847b379578588920cA78FbF26c0B4956C`:
+```solidity
+contract CounterScript is Script {
+    address constant CREATE2_DEPLOYER = address(0x4e59b44847b379578588920cA78FbF26c0B4956C);
+    address constant GOERLI_POOLMANAGER = address(0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b);
+
+    function setUp() public {}
+
+    function run() public {
+        // hook contracts must have specific flags encoded in the address
+        uint160 flags = uint160(
+            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG
+                | Hooks.AFTER_MODIFY_POSITION_FLAG
+        );
+
+        // Mine a salt that will produce a hook address with the correct flags
+        (address hookAddress, bytes32 salt) =
+            HookMiner.find(CREATE2_DEPLOYER, flags, type(Counter).creationCode, abi.encode(address(GOERLI_POOLMANAGER)));
+
+        // Deploy the hook using CREATE2
+        vm.broadcast();
+        Counter counter = new Counter{salt: salt}(IPoolManager(address(GOERLI_POOLMANAGER)));
+        require(address(counter) == hookAddress, "CounterScript: hook address mismatch");
+    }
+}
+```
+https://github.com/uniswapfoundation/v4-template/blob/main/script/CounterDeploy.s.sol
 
 
-
-https://github.com/Uniswap/v4-periphery/issues/59#issuecomment-1716379675
-
-not much documentation related to it
-
-but here’s the source
-
-https://github.com/Arachnid/deterministic-deployment-proxy

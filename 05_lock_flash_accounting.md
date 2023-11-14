@@ -28,66 +28,65 @@ In this analogy:
 
 
 # Main Components
-In `PoolManager` "locking" is essentially a way to ensure certain operations are coordinated and don't interfere with each other
+In `PoolManager` "locking" is essentially a way to ensure certain operations are coordinated and don't interfere with each other.
 Here are the main components of the locking mechanism:
 
 ### 1. **Locking and Unlocking:**
+  - The `lock` function is where the locking mechanism is initiated. It pushes the `msg.sender` (the caller of the 
+    function) to the `lockData` which acts as a queue.
 
-- The `lock` function is where the locking mechanism is initiated. It pushes the `msg.sender` (the caller of the 
-  function) to the `lockData` which acts as a queue.
+      ```solidity
+      function lock(bytes calldata data) external override returns (bytes memory result) {
+          lockData.push(msg.sender);
+  
+          result = ILockCallback(msg.sender).lockAcquired(data);
+  
+          if (lockData.length == 1) {
+              if (lockData.nonzeroDeltaCount != 0) revert CurrencyNotSettled();
+              delete lockData;
+          } else {
+              lockData.pop();
+          }
+      }
+      ```
 
-    ```solidity
-    function lock(bytes calldata data) external override returns (bytes memory result) {
-        lockData.push(msg.sender);
+  - During the lock, a callback function `ILockCallback(msg.sender).lockAcquired(data)` is called, where the locked 
+    contract can perform necessary operations.
 
-        result = ILockCallback(msg.sender).lockAcquired(data);
-
-        if (lockData.length == 1) {
-            if (lockData.nonzeroDeltaCount != 0) revert CurrencyNotSettled();
-            delete lockData;
-        } else {
-            lockData.pop();
-        }
-    }
-    ```
-
-- During the lock, a callback function `ILockCallback(msg.sender).lockAcquired(data)` is called, where the locked 
-  contract can perform necessary operations.
-
-- After the operations in the callback are completed, it either deletes the `lockData` if it is the only element, 
-  signifying the release of the lock, or it pops the last element from `lockData`, signifying that the lock is 
-  released by that particular address.
+  - After the operations in the callback are completed, it either deletes the `lockData` if it is the only element, 
+    signifying the release of the lock, or it pops the last element from `lockData`, signifying that the lock is 
+    released by that particular address.
 
 ### 2. **Queue Management:**
 
-- The queue management is handled by the `LockDataLibrary`. This library provides functionality to push, pop, and 
-  get active locks from the `lockData`.
+  - The queue management is handled by the `LockDataLibrary`. This library provides functionality to push, pop, and 
+    get active locks from the `lockData`.
 
-- The queue is managed in a way that it allows you to keep a track of locker addresses and ensure that only the 
-  active locker can perform certain operations.
+  - The queue is managed in a way that it allows you to keep a track of locker addresses and ensure that only the 
+    active locker can perform certain operations.
 
 ### 3. **Non-Zero Deltas Tracking:**
 
-- `nonzeroDeltaCount` is a variable in `LockData` structure that keeps track of non-zero deltas across all lockers. A 
-   delta here appears to represent a kind of balance or a state that changes during operations.
+  - `nonzeroDeltaCount` is a variable in `LockData` structure that keeps track of non-zero deltas across all lockers. A 
+     delta here appears to represent a kind of balance or a state that changes during operations.
 
-- In the `_accountDelta` function, if a delta changes from or to zero, the `nonzeroDeltaCount` is updated accordingly. 
-  This is crucial for tracking the net changes made by each locker and ensuring that everything nets to zero at the end of operations.
+  - In the `_accountDelta` function, if a delta changes from or to zero, the `nonzeroDeltaCount` is updated accordingly. 
+    This is crucial for tracking the net changes made by each locker and ensuring that everything nets to zero at the end of operations.
 
 ### 4. **Restricted Access:**
 
-- The modifier `onlyByLocker` is used to restrict access to certain functions. It ensures that a function can only be 
-  called by the address that currently holds the lock.
-    ```solidity
-    modifier onlyByLocker() {
-        address locker = lockData.getActiveLock();
-        if (msg.sender != locker) revert LockedBy(locker);
-        _;
-    }
-    ```
-- Several functions in the contract, such as `modifyPosition`, `swap`, `donate`, `take`, `mint`, and `settle`, use 
-  the `onlyByLocker` modifier. This ensures that only the entity that has currently locked the contract can modify 
-  positions, swap tokens, etc. This helps ensure operations are atomic and avoid potential race conditions.
+  - The modifier `onlyByLocker` is used to restrict access to certain functions. It ensures that a function can only be 
+    called by the address that currently holds the lock.
+      ```solidity
+      modifier onlyByLocker() {
+          address locker = lockData.getActiveLock();
+          if (msg.sender != locker) revert LockedBy(locker);
+          _;
+      }
+      ```
+  - Several functions in the contract, such as `modifyPosition`, `swap`, `donate`, `take`, `mint`, and `settle`, use 
+      the `onlyByLocker` modifier. This ensures that only the entity that has currently locked the contract can modify 
+      positions, swap tokens, etc. This helps ensure operations are atomic and avoid potential race conditions.
 
 # Locking Diagram
 
@@ -122,45 +121,9 @@ The locking mechanism in the PoolManager contract works as follows:
 
 
 # Example
-Below is the example from a community ["Liquidity Bootstrapping Hook"](https://github.com/kadenzipfel/uni-lbp/blob/main/src/LiquidityBootstrappingHooks.sol) that checks the deltas and settles them before releasing the lock.
+Below is the example from a community ["Liquidity Bootstrapping Hook"](https://github.com/kadenzipfel/uni-lbp/blob/main/src/LiquidityBootstrappingHooks.sol) hook that uses the locking mechanism and calls the `modifyPosition` and `swap` functions.
 
 ```solidity
-
-/// @notice Helper function to take tokens according to balance deltas
-/// @param delta Balance delta
-/// @param takeToOwner Whether to take the tokens to the owner
-function _takeDeltas(PoolKey memory key, BalanceDelta delta, bool takeToOwner) internal {
-    PoolId poolId = key.toId();
-    int256 delta0 = delta.amount0();
-    int256 delta1 = delta.amount1();
-
-    if (delta0 < 0) {
-        poolManager.take(key.currency0, takeToOwner ? owner[poolId] : address(this), uint256(-delta0));
-    }
-
-    if (delta1 < 0) {
-        poolManager.take(key.currency1, takeToOwner ? owner[poolId] : address(this), uint256(-delta1));
-    }
-}
-
-/// @notice Helper function to settle tokens according to balance deltas
-/// @param key Pool key
-/// @param delta Balance delta
-function _settleDeltas(PoolKey memory key, BalanceDelta delta) internal {
-    int256 delta0 = delta.amount0();
-    int256 delta1 = delta.amount1();
-
-    if (delta0 > 0) {
-        key.currency0.transfer(address(poolManager), uint256(delta0));
-        poolManager.settle(key.currency0);
-    }
-
-    if (delta1 > 0) {
-        key.currency1.transfer(address(poolManager), uint256(delta1));
-        poolManager.settle(key.currency1);
-    }
-}
-
 /// @notice Callback function called by the poolManager when a lock is acquired
 ///         Used for modifying positions and swapping tokens internally
 /// @param data Data passed to the lock function
@@ -197,5 +160,45 @@ function lockAcquired(bytes calldata data) external override poolManagerOnly ret
     }
 
     return bytes("");
+}
+```
+
+Other important thing to note is that before the lock is released, the `nonzeroDeltaCount` is checked to ensure that
+all currency deltas are settled. This is done by `_takeDeltas` and `_settleDeltas` functions.
+
+```solidity
+/// @notice Helper function to take tokens according to balance deltas
+/// @param delta Balance delta
+/// @param takeToOwner Whether to take the tokens to the owner
+function _takeDeltas(PoolKey memory key, BalanceDelta delta, bool takeToOwner) internal {
+    PoolId poolId = key.toId();
+    int256 delta0 = delta.amount0();
+    int256 delta1 = delta.amount1();
+
+    if (delta0 < 0) {
+        poolManager.take(key.currency0, takeToOwner ? owner[poolId] : address(this), uint256(-delta0));
+    }
+
+    if (delta1 < 0) {
+        poolManager.take(key.currency1, takeToOwner ? owner[poolId] : address(this), uint256(-delta1));
+    }
+}
+
+/// @notice Helper function to settle tokens according to balance deltas
+/// @param key Pool key
+/// @param delta Balance delta
+function _settleDeltas(PoolKey memory key, BalanceDelta delta) internal {
+    int256 delta0 = delta.amount0();
+    int256 delta1 = delta.amount1();
+
+    if (delta0 > 0) {
+        key.currency0.transfer(address(poolManager), uint256(delta0));
+        poolManager.settle(key.currency0);
+    }
+
+    if (delta1 > 0) {
+        key.currency1.transfer(address(poolManager), uint256(delta1));
+        poolManager.settle(key.currency1);
+    }
 }
 ```

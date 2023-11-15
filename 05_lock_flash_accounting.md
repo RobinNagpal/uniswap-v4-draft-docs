@@ -65,7 +65,7 @@ Here are the main components of the locking mechanism:
   - The queue is managed in a way that it allows you to keep a track of locker addresses and ensure that only the 
     active locker can perform certain operations.
 
-### 3. **Non-Zero Deltas Tracking:**
+### 3. **Non-Zero Deltas Tracking(Flash Accounting):**
 
   - `nonzeroDeltaCount` is a variable in `LockData` structure that keeps track of non-zero deltas across all lockers. A 
      delta here appears to represent a kind of balance or a state that changes during operations.
@@ -73,6 +73,9 @@ Here are the main components of the locking mechanism:
   - In the `_accountDelta` function, if a delta changes from or to zero, the `nonzeroDeltaCount` is updated accordingly. 
     This is crucial for tracking the net changes made by each locker and ensuring that everything nets to zero at the end of operations.
 
+  - This mechanism is a key component of what is termed "Flash Accounting" in Uniswap V4. Flash Accounting is an innovative approach introduced with the new singleton-style pool management. This feature fundamentally alters the management of tokens during transaction processes. Traditional methods typically require explicit tracking of token balances at every operational phase. In contrast, Flash Accounting operates under the principle that by the end of each transaction or "lock period," there should be no net tokens owed either to the pool or the caller, streamlining the accounting process significantly.
+
+  - Flash accounting leverages the capabilities of transient storage opcodes, as proposed in EIP-1153. These transient storage opcodes are incredibly efficient, acting like temporary variables that exist only for the duration of the transaction. This dramatically reduces the gas costs because you're not continually updating the Ethereum state with intermediate steps.  
 ### 4. **Restricted Access:**
 
   - The modifier `onlyByLocker` is used to restrict access to certain functions. It ensures that a function can only be 

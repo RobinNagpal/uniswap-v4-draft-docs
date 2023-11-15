@@ -30,7 +30,7 @@ Here are some key points about the Counter hook test:
             counter = new Counter{salt: salt}(IPoolManager(address(manager)));
         }
     ```
-    Pool is then initialized with this hook
+    Pool is then initialized containing this hook
     ```solidity
         // Create the pool
         poolKey = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, IHooks(counter));

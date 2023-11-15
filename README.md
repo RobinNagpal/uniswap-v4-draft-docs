@@ -20,7 +20,7 @@
 
 
 ### Explain how to create a real world hook with UI(based on Sauce's work)
-- [ ] Create a simple real world hook with UI
+- [ ] Create a simple real world hook with UI. End to end.
 
 ### FAQs
 - [ ] FAQs based on questions asked in the hook dojo
@@ -31,9 +31,17 @@
 - [ ] Minting and providing NFTs
 - [ ] Accounting logic updates
 - [ ] Security considerations
-- [ ] Best practices
+- [ ] Hook Best practices
+- [ ] Bad hooks
+
+### Tools
+- [ ] Hook scaffolding tool
+- [ ] Hook Static Analyzer
+
   
 ### Routers/Operators (Open question)
 - [ ] How UI interacts with the pool manager
+- [ ] V4 JS SDK
+
 
 

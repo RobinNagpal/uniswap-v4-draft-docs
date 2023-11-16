@@ -43,22 +43,13 @@ function swap(PoolKey memory key, SwapParams memory params, bytes calldata hookD
 # Example
 Here is an example of how to swap tokens by calling the `swap` function:
 ```solidity
-PoolKey memory key = PoolKey({
-    currency0: Currency.wrap(address(0)),
-    currency1: currency1,
-    fee: 3000,
-    hooks: IHooks(address(0)),
-    tickSpacing: 60
-});
+PoolSwapTest swapRouter = new PoolSwapTest(IPoolManager(address(manager)));
+PoolSwapTest.TestSettings memory testSettings =
+    PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-IPoolManager.SwapParams memory params =
-    IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 100, sqrtPriceLimitX96: SQRT_RATIO_1_2});
-
-
-manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
-
-manager.swap(key, params, ZERO_BYTES);
+swapRouter.swap(key, params, testSettings, hookData);
 ```
+Note: `PoolSwapTest` implements the `ILockCallback` interface and adds the `lockAcquired` function, which in turn calls the `manager.swap` function.
 
 # Acquiring Lock
 Full detail about the locking mechanism is explained in the [Locking Mechanism](/03_Locking_Mechanism/README.md) section.

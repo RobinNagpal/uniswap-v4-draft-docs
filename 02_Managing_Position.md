@@ -107,23 +107,26 @@ https://github.com/Uniswap/v3-periphery/blob/main/contracts/base/LiquidityManage
 ```
 
 # Example - Add Liquidity
-Here is the code that adds liquidity to a position:
+Here is the code that adds liquidity to a position
 ```solidity
- int24 tickLower = -600;
- int24 tickUpper = 600;
- uint256 liquidity = 1e18;
- 
- pm.modifyPosition(
-     address(this),
-     poolKey,
-     IPoolManager.ModifyPositionParams({
-         tickLower: tickLower,
-         tickUpper: tickUpper,
-         liquidityDelta: int256(liquidity)
-     }),
-     ZERO_BYTES
- );
+int24 tickLower = -600;
+int24 tickUpper = 600;
+uint256 liquidity = 1e18;
+
+PoolManager manager = new PoolManager(500000);
+// Helpers for interacting with the pool
+PoolModifyPositionTest modifyPositionRouter = new PoolModifyPositionTest(IPoolManager(address(manager)));
+modifyPositionRouter.modifyPosition(
+    poolKey,
+    IPoolManager.ModifyPositionParams({
+        tickLower: tickLower,
+        tickUpper: tickUpper,
+        liquidityDelta: int256(liquidity)
+    }),
+    ZERO_BYTES
+);
 ```
+Note: `PoolModifyPositionTest` implements the `ILockCallback` interface and adds the `lockAcquired` function, which in turn calls the `manager.modifyPosition` function.
 
 # Acquiring Lock
 Full detail about the locking mechanism is explained in the [Locking Mechanism](/03_Locking_Mechanism/README.md) section.
